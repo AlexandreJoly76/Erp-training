@@ -398,6 +398,42 @@ rows.forEach(row => {
 2. Il clique sur “Créer une nouvelle commande” → `/commande/nouvelle/` :
    - Remplit le client, statut, TVA.
    - Remplit jusqu’à 3 lignes (produit, quantité) ; le prix s’auto-remplit via le JS.
+
+---
+
+## Nouvelle fonctionnalité : remise automatique selon le type de client (pro / part)
+
+Objectif : appliquer une remise (ex. 10 % pour un client pro) sur le prix unitaire des lignes, et l’afficher clairement.
+
+### 1) Logique métier (serveur)
+- `stocks/models.py`
+  - Ajout de `DISCOUNT_BY_CLIENT_TYPE = {"pro": Decimal("0.10"), "part": Decimal("0.00")}` : table de remises.
+  - Fonction `compute_price_with_discount(base_price, client_type)` : retourne le prix remisé arrondi à 2 décimales.
+  - `LigneCommande.save` : si le prix n’est pas fourni, il prend le prix produit **moins** la remise liée au client de la commande.
+- `stocks/views.py`
+  - Lors de la création (`order_create`), chaque ligne est recalculée avec la remise du client avant sauvegarde.
+  - Dans le détail (`order_detail`), on envoie `discount_percent` au template pour afficher le % appliqué.
+
+### 2) Interface utilisateur (formulaire de commande)
+- Template `stocks/templates/stocks/order_form.html`
+  - Bandeau informatif : “Remise appliquée pour ce client : -X% …” qui s’actualise quand on change le client.
+  - Les prix unitaires préremplis tiennent compte de la remise du client sélectionné (JS met à jour quand on change de client ou de produit, sauf si l’utilisateur a modifié le champ manuellement).
+- CSS `stocks/static/stocks/orderForm.css`
+  - Classe `.notice` pour le bandeau de remise (fond doux bleu, texte accentué).
+
+### 3) Affichage dans le détail de commande
+- Template `stocks/templates/stocks/order_detail.html`
+  - Ligne ajoutée : `Remise appliquée : {{ discount_percent }} %`.
+  - Les prix unitaires et totaux affichés sont déjà remisés car calculés côté serveur.
+
+### 4) Illustration rapide (flow débutant)
+1. Je choisis un **client pro** dans le formulaire → le bandeau indique “-10 %”.
+2. Je sélectionne un produit : le prix unitaire se remplit avec le prix catalogue -10 %.
+3. Si je change de client pour un **particulier** : le bandeau passe à “0 %” et les prix se recalculent automatiquement (sauf ceux déjà modifiés à la main).
+4. Après sauvegarde, la page de détail rappelle la remise appliquée et affiche les prix remisés.
+
+### 5) Comment ajuster la remise ?
+- Modifier simplement `DISCOUNT_BY_CLIENT_TYPE` dans `stocks/models.py` (ex. passer `pro` à `Decimal("0.15")` pour 15 %).
    - Soumet le formulaire : la vue valide, crée la commande + lignes, puis redirige vers le détail.
 3. La page `/commande/<id>/` affiche les lignes et les totaux HT/TTC calculés côté modèle.
 4. En parallèle, l’admin Django (`/admin/`) permet de gérer produits, clients, commandes et lignes avec recherche/filtre/inline.

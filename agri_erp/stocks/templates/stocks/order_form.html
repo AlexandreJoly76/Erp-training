@@ -21,6 +21,9 @@
       <fieldset>
         <legend>Détails de la commande</legend>
         {{ form.as_p }}
+        <p id="discount-banner" class="notice">
+          La remise sera appliquée automatiquement selon le type du client.
+        </p>
       </fieldset>
 
       <fieldset>
@@ -53,18 +56,50 @@
         <button class="btn btn-primary" type="submit">Enregistrer la commande</button>
       </div>
     </form>
-    
+
   </main>
   {{ prix_produits|json_script:"produits-prix-data" }}
+  {{ discounts|json_script:"discounts-data" }}
+  {{ clients_types|json_script:"clients-types-data" }}
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       const dataElement = document.getElementById("produits-prix-data");
-      if (!dataElement) {
+      const discountsElement = document.getElementById("discounts-data");
+      const clientsElement = document.getElementById("clients-types-data");
+      if (!dataElement || !discountsElement || !clientsElement) {
         return;
       }
       const productPrices = JSON.parse(dataElement.textContent);
+      const discountRates = JSON.parse(discountsElement.textContent);
+      const clientTypes = JSON.parse(clientsElement.textContent);
+      const clientSelect = document.querySelector("select[name='client']");
 
       const rows = document.querySelectorAll(".formset-row");
+
+      const currentDiscountRate = () => {
+        if (!clientSelect) return 0;
+        const clientType = clientTypes[clientSelect.value] || null;
+        const rate = discountRates[clientType] || "0";
+        return parseFloat(rate) || 0;
+      };
+
+      const updateDiscountBanner = () => {
+        const banner = document.getElementById("discount-banner");
+        if (!banner || !clientSelect) return;
+        const rate = currentDiscountRate();
+        const pct = (rate * 100).toFixed(0);
+        banner.textContent = rate > 0
+          ? `Remise appliquée pour ce client : -${pct}% sur les prix de base.`
+          : `Aucune remise pour ce client : prix de base appliqués.`;
+      };
+
+      const computePrice = (productId) => {
+        const basePrice = parseFloat(productPrices[productId]);
+        if (Number.isNaN(basePrice)) return "";
+        const rate = currentDiscountRate();
+        return (basePrice * (1 - rate)).toFixed(2);
+      };
+
       rows.forEach((row) => {
         const productSelect = row.querySelector("select[name$='-produit']");
         const priceInput = row.querySelector("input[name$='-prix_unitaire']");
@@ -74,7 +109,7 @@
         }
 
         const fillPrice = () => {
-          const price = productPrices[productSelect.value];
+          const price = computePrice(productSelect.value);
           if (price && !priceInput.dataset.userEdited) {
             priceInput.value = price;
           }
@@ -97,6 +132,25 @@
           }
         });
       });
+
+      if (clientSelect) {
+        clientSelect.addEventListener("change", () => {
+          rows.forEach((row) => {
+            const priceInput = row.querySelector("input[name$='-prix_unitaire']");
+            if (priceInput && !priceInput.dataset.userEdited) {
+              const productSelect = row.querySelector("select[name$='-produit']");
+              if (productSelect) {
+                const price = computePrice(productSelect.value);
+                if (price) {
+                  priceInput.value = price;
+                }
+              }
+            }
+          });
+          updateDiscountBanner();
+        });
+        updateDiscountBanner();
+      }
     });
   </script>
 

@@ -1,9 +1,17 @@
+from decimal import Decimal
+
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from .forms import CommandeForm, LigneCommandeFormSet
 
-from .models import Commande, Produit
+from .models import (
+    Client,
+    Commande,
+    Produit,
+    compute_price_with_discount,
+    DISCOUNT_BY_CLIENT_TYPE,
+)
 
 
 FORMSET_PREFIX = "lignes"
@@ -18,6 +26,11 @@ def order_create(request):
     produits_prix = {
         str(produit.id): str(produit.prix) for produit in Produit.objects.only("id", "prix")
     }
+    clients_types = {
+        str(client.id): client.type_client
+        for client in Client.objects.only("id", "type_client")
+    }
+    discounts = {key: str(value) for key, value in DISCOUNT_BY_CLIENT_TYPE.items()}
 
     if request.method == "POST":
         form = CommandeForm(request.POST)
@@ -27,8 +40,10 @@ def order_create(request):
             lignes = formset.save(commit=False)
             for ligne in lignes:
                 ligne.commande = commande
-                if not ligne.prix_unitaire:
-                    ligne.prix_unitaire = ligne.produit.prix
+                ligne.prix_unitaire = compute_price_with_discount(
+                    ligne.produit.prix,
+                    commande.client.type_client,
+                )
                 ligne.save()
             return redirect(reverse("stocks:order_detail", args=[commande.id]))
     else:
@@ -42,10 +57,21 @@ def order_create(request):
             "form": form,
             "formset": formset,
             "prix_produits": produits_prix,
+            "clients_types": clients_types,
+            "discounts": discounts,
         },
     )
 
 
 def order_detail(request, pk: int):
     cmd = get_object_or_404(Commande, pk=pk)
-    return render(request, "stocks/order_detail.html", {"commande": cmd})
+    discount_rate = DISCOUNT_BY_CLIENT_TYPE.get(cmd.client.type_client, Decimal("0"))
+    discount_percent = (discount_rate * Decimal("100")).quantize(Decimal("0.01"))
+    return render(
+        request,
+        "stocks/order_detail.html",
+        {
+            "commande": cmd,
+            "discount_percent": discount_percent,
+        },
+    )

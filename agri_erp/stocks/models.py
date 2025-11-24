@@ -2,6 +2,17 @@ from django.db import models
 from decimal import Decimal
 
 TVA_STANDARD = Decimal("0.20")
+# Remises par type de client (ex. 10% pour un pro)
+DISCOUNT_BY_CLIENT_TYPE = {
+    "pro": Decimal("0.10"),
+    "part": Decimal("0.00"),
+}
+
+
+def compute_price_with_discount(base_price: Decimal, client_type: str | None) -> Decimal:
+    # Retourne le prix TTC remisé pour le type de client.
+    discount = DISCOUNT_BY_CLIENT_TYPE.get(client_type, Decimal("0"))
+    return (base_price * (Decimal("1") - discount)).quantize(Decimal("0.01"))
 
 
 class Client(models.Model):
@@ -54,7 +65,7 @@ class Commande(models.Model):
     @property
     def total_ht(self):
         total = Decimal("0.00")
-        # ✅ utiliser le related_name exact: "lignes"
+        # utiliser le related_name exact: "lignes"
         for ligne in self.lignes.all():  # type: ignore[attr-defined]
             total += ligne.valeur_ligne
         return total
@@ -88,9 +99,15 @@ class LigneCommande(models.Model):
         return self.prix_unitaire * self.quantite
 
     def save(self, *args, **kwargs):
-        # Par défaut, si pas de prix fourni, on prend celui du produit
+        # Par défaut, si pas de prix fourni, on applique la remise client au prix produit
         if not self.prix_unitaire:
-            self.prix_unitaire = self.produit.prix
+            client_type = None
+            if self.commande_id and self.commande and self.commande.client_id:
+                client_type = self.commande.client.type_client
+            self.prix_unitaire = compute_price_with_discount(
+                self.produit.prix,
+                client_type,
+            )
         super().save(*args, **kwargs)
 
 
