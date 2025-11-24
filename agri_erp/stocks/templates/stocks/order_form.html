@@ -38,7 +38,7 @@
           </thead>
           <tbody>
             {% for f in formset %}
-            <tr>
+            <tr class="formset-row">
               <td>{{ f.produit }}</td>
               <td>{{ f.quantite }}</td>
               <td>{{ f.prix_unitaire }}</td>
@@ -55,6 +55,50 @@
     </form>
     
   </main>
-  
+  {{ prix_produits|json_script:"produits-prix-data" }}
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const dataElement = document.getElementById("produits-prix-data");
+      if (!dataElement) {
+        return;
+      }
+      const productPrices = JSON.parse(dataElement.textContent);
+
+      const rows = document.querySelectorAll(".formset-row");
+      rows.forEach((row) => {
+        const productSelect = row.querySelector("select[name$='-produit']");
+        const priceInput = row.querySelector("input[name$='-prix_unitaire']");
+
+        if (!productSelect || !priceInput) {
+          return;
+        }
+
+        const fillPrice = () => {
+          const price = productPrices[productSelect.value];
+          if (price && !priceInput.dataset.userEdited) {
+            priceInput.value = price;
+          }
+        };
+
+        if (!priceInput.value) {
+          fillPrice();
+        }
+
+        productSelect.addEventListener("change", () => {
+          delete priceInput.dataset.userEdited;
+          fillPrice();
+        });
+
+        priceInput.addEventListener("input", () => {
+          if (priceInput.value) {
+            priceInput.dataset.userEdited = "true";
+          } else {
+            delete priceInput.dataset.userEdited;
+          }
+        });
+      });
+    });
+  </script>
+
 </body>
 </html>

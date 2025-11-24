@@ -6,15 +6,22 @@ from .forms import CommandeForm, LigneCommandeFormSet
 from .models import Commande, Produit
 
 
+FORMSET_PREFIX = "lignes"
+
+
 def product_list(request):
     produits = Produit.objects.order_by("ref")
     return render(request, "stocks/product_list.html", {"produits": produits})
 
 
 def order_create(request):
+    produits_prix = {
+        str(produit.id): str(produit.prix) for produit in Produit.objects.only("id", "prix")
+    }
+
     if request.method == "POST":
         form = CommandeForm(request.POST)
-        formset = LigneCommandeFormSet(request.POST)
+        formset = LigneCommandeFormSet(request.POST, prefix=FORMSET_PREFIX)
         if form.is_valid() and formset.is_valid():
             commande = form.save()
             lignes = formset.save(commit=False)
@@ -26,7 +33,7 @@ def order_create(request):
             return redirect(reverse("stocks:order_detail", args=[commande.id]))
     else:
         form = CommandeForm()
-        formset = LigneCommandeFormSet()
+        formset = LigneCommandeFormSet(prefix=FORMSET_PREFIX)
 
     return render(
         request,
@@ -34,6 +41,7 @@ def order_create(request):
         {
             "form": form,
             "formset": formset,
+            "prix_produits": produits_prix,
         },
     )
 

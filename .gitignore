@@ -15,3 +15,5 @@ venv/
 
 # Autres
 .DS_Store
+
+.cour.md
